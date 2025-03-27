@@ -1,0 +1,55 @@
+ai_english/
+├── lib/
+│   ├── main.dart                      # App entry point
+│   ├── routes.dart                    # App routes
+│   ├── constants/                     # App constants
+│   │   ├── colors.dart                # Color constants
+│   │   ├── styles.dart                # Style constants
+│   │   └── strings.dart               # String constants
+│   ├── models/                        # Data models
+│   │   ├── user_model.dart            # User model
+│   │   ├── conversation_model.dart    # Conversation model
+│   │   ├── question_answer_model.dart # Q&A model
+│   │   └── scenario_model.dart        # Scenario model
+│   ├── services/                      # Services
+│   │   ├── api_service.dart           # API service
+│   │   ├── claude_service.dart        # Claude AI service
+│   │   ├── speech_service.dart        # Speech recognition service
+│   │   ├── storage_service.dart       # Local storage service
+│   │   └── feedback_service.dart      # Feedback service
+│   ├── providers/                     # State management
+│   │   ├── auth_provider.dart         # Authentication provider
+│   │   ├── conversation_provider.dart # Conversation provider
+│   │   ├── qa_provider.dart           # Q&A provider
+│   │   └── scenario_provider.dart     # Scenario provider
+│   ├── screens/                       # App screens
+│   │   ├── splash_screen.dart         # Splash screen
+│   │   ├── home_screen.dart           # Home screen
+│   │   ├── scenario/                  # Scenario screens
+│   │   │   ├── scenario_list_screen.dart     # Scenario list
+│   │   │   ├── scenario_detail_screen.dart   # Scenario detail
+│   │   │   └── scenario_chat_screen.dart     # Scenario chat
+│   │   ├── qna/                       # Q&A screens
+│   │   │   ├── qna_list_screen.dart         # Q&A list
+│   │   │   ├── qna_detail_screen.dart       # Q&A detail
+│   │   │   └── qna_practice_screen.dart     # Q&A practice
+│   │   ├── history/                   # History screens
+│   │   │   ├── history_list_screen.dart     # History list
+│   │   │   └── history_detail_screen.dart   # History detail
+│   │   └── settings_screen.dart       # Settings screen
+│   ├── widgets/                       # Reusable widgets
+│   │   ├── custom_button.dart         # Custom button
+│   │   ├── speech_input.dart          # Speech input widget
+│   │   ├── conversation_bubble.dart   # Conversation bubble
+│   │   ├── feedback_card.dart         # Feedback card
+│   │   └── loading_indicator.dart     # Loading indicator
+│   └── utils/                         # Utility functions
+│       ├── logger.dart                # Logging utility
+│       ├── validators.dart            # Validation utility
+│       └── speech_helpers.dart        # Speech recognition helpers
+└── assets/
+    ├── images/                        # Image assets
+    ├── icons/                         # Icon assets
+    ├── fonts/                         # Font assets
+    └── qa_data/                       # Q&A data files
+        └── us_citizenship_questions.json # Parsed US citizenship questions
