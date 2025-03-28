@@ -78,16 +78,17 @@ B: System of Government
 19. We elect a U.S. Senator for how many years?
 ▪ six (6)
 20. Who is one of your state's U.S. Senators now?*
-▪ Answers will vary. [District of Columbia residents and residents of U.S. territories should answer that D.C.
-(or the territory where the applicant lives) has no U.S. Senators.]
+▪ Jacky Rosen (Democratic Party)
+▪ Catherine Cortez Masto (Democratic Party)
 21. The House of Representatives has how many voting members?
 ▪ four hundred thirty-five (435)
 22. We elect a U.S. Representative for how many years?
 ▪ two (2)
 23. Name your U.S. Representative.
-▪ Answers will vary. [Residents of territories with nonvoting Delegates or Resident Commissioners may
-provide the name of that Delegate or Commissioner. Also acceptable is any statement that the territory has
-no (voting) Representatives in Congress.]
+▪ Susie Lee (Democratic Party)
+▪ Steven Horsford (Democratic Party)
+▪ Mark Amodei (Republican Party)
+▪ Dina Titus (Democratic Party)
 24. Who does a U.S. Senator represent?
 ▪ all people of the state
 25. Why do some states have more Representatives than other states?
@@ -99,9 +100,12 @@ no (voting) Representatives in Congress.]
 27. In what month do we vote for President?*
 ▪ November
 28. What is the name of the President of the United States now?*
-▪ Visit uscis.gov/citizenship/testupdates for the name of the President of the United States.
+▪ Donald Trump
+▪ Donald J. Trump
+▪ Trump
 29. What is the name of the Vice President of the United States now?
-▪ Visit uscis.gov/citizenship/testupdates for the name of the Vice President of the United States.
+▪ J. D. Vance
+▪ Vance
 30. If the President can no longer serve, who becomes President?
 ▪ the Vice President
 31. If both the President and the Vice President can no longer serve, who becomes President?
@@ -139,9 +143,10 @@ no (voting) Representatives in Congress.]
 38. What is the highest court in the United States?
 ▪ the Supreme Court
 39. How many justices are on the Supreme Court?
-▪ Visit uscis.gov/citizenship/testupdates for the number of justices on the Supreme Court.
+▪ 9 (nine)
 40. Who is the Chief Justice of the United States now?
-▪ Visit uscis.gov/citizenship/testupdates for the name of the Chief Justice of the United States.
+▪ John G. Roberts, Jr.
+▪ John Roberts
 41. Under our Constitution, some powers belong to the federal government. What is one power of the federal
 government?
 ▪ to print money
@@ -155,16 +160,18 @@ government?
 ▪ give a driver's license
 ▪ approve zoning and land use
 43. Who is the Governor of your state now?
-▪ Answers will vary. [District of Columbia residents should answer that D.C. does not have a Governor.]
+▪ Joe Lombardo
+▪ Lombardo
 44. What is the capital of your state?*
-▪ Answers will vary. [District of Columbia residents should answer that D.C. is not a state and does not have a
-capital. Residents of U.S. territories should name the capital of the territory.]
+▪ Carson City
 45. What are the two major political parties in the United States?*
 ▪ Democratic and Republican
 46. What is the political party of the President now?
-▪ Visit uscis.gov/citizenship/testupdates for the political party of the President.
+▪ Republican (Party)
 47. What is the name of the Speaker of the House of Representatives now?
-▪ Visit uscis.gov/citizenship/testupdates for the name of the Speaker of the House of Representatives.
+▪ Mike Johnson
+▪ Johnson
+▪ James Michael Johnson (birth name)
 C: Rights and Responsibilities
 48. There are four amendments to the Constitution about who can vote. Describe one of them.
 ▪ Citizens eighteen (18) and older (can vote).

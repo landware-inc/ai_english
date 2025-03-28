@@ -56,11 +56,10 @@ class MyApp extends StatelessWidget {
         Provider<StorageService>.value(
           value: storageService,
         ),
-        Provider<SpeechService>(
+        ListenableProvider<SpeechService>(
           create: (_) => SpeechService(),
           dispose: (_, service) => service.dispose(),
         ),
-
         // State providers
         ChangeNotifierProvider<ConversationProvider>(
           create: (context) => ConversationProvider(
