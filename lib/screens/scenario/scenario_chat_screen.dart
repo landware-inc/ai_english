@@ -7,7 +7,7 @@ import '../../providers/conversation_provider.dart';
 import '../../providers/scenario_provider.dart';
 import '../../services/speech_service.dart';
 import '../../widgets/conversation_bubble.dart';
-import '../../widgets/speech_input.dart';
+import '../../widgets/voice_only_speech_input.dart'; // Updated import
 import '../../widgets/loading_indicator.dart';
 
 class ScenarioChatScreen extends StatefulWidget {
@@ -27,6 +27,7 @@ class ScenarioChatScreen extends StatefulWidget {
 class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isInitialized = false;
+  bool _shouldAutoActivateMic = false;
   String? _error;
 
   @override
@@ -53,11 +54,17 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
 
       // Add initial AI message if conversation is empty
       if (conversationProvider.currentConversation?.messages.isEmpty ?? true) {
-        _sendInitialMessage();
+        await _sendInitialMessage();
       }
 
       setState(() {
         _isInitialized = true;
+      });
+
+      // Add a short delay to ensure the UI is updated before speaking
+      Future.delayed(const Duration(milliseconds: 500), () {
+        // Auto-speak the last AI message to help the user understand context
+        _speakLastAIMessage(autoActivateMic: true);
       });
     } catch (e) {
       setState(() {
@@ -66,7 +73,7 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
     }
   }
 
-  void _sendInitialMessage() {
+  Future<void> _sendInitialMessage() async {
     final scenarioProvider = Provider.of<ScenarioProvider>(context, listen: false);
     final conversationProvider = Provider.of<ConversationProvider>(context, listen: false);
 
@@ -74,7 +81,54 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
     final systemPrompt = scenarioProvider.generateSystemPrompt();
 
     // Process the empty message to get the AI's opening line
-    conversationProvider.processUserMessage('', systemPrompt);
+    await conversationProvider.processUserMessage('', systemPrompt);
+
+    // Let UI update before we return
+    await Future.delayed(const Duration(milliseconds: 300));
+  }
+
+  void _speakLastAIMessage({bool autoActivateMic = false}) {
+    final conversationProvider = Provider.of<ConversationProvider>(context, listen: false);
+    final speechService = Provider.of<SpeechService>(context, listen: false);
+
+    if (conversationProvider.currentConversation == null ||
+        conversationProvider.currentConversation!.messages.isEmpty) {
+      return;
+    }
+
+    // Find the last AI message
+    final messages = conversationProvider.currentConversation!.messages;
+    Message? lastAIMessage;
+    for (int i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role == MessageRole.ai) {
+        lastAIMessage = messages[i];
+        break;
+      }
+    }
+
+    if (lastAIMessage != null) {
+      // First stop any ongoing TTS
+      speechService.stopSpeaking();
+
+      // Log the message content for debugging
+      debugPrint('Speaking message: ${lastAIMessage.content}');
+
+      setState(() {
+        _shouldAutoActivateMic = autoActivateMic;
+      });
+
+      // Read the message and auto-activate mic when done
+      speechService.speak(lastAIMessage.content, onComplete: () {
+        debugPrint('TTS completed, should activate mic: $autoActivateMic');
+        if (autoActivateMic && mounted) {
+          setState(() {
+            _shouldAutoActivateMic = true;
+          });
+        }
+      });
+    } else {
+      debugPrint('No AI message found to speak');
+    }
   }
 
   void _scrollToBottom() {
@@ -95,6 +149,11 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
       appBar: AppBar(
         title: const Text('Conversation'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.volume_up),
+            onPressed: () => _speakLastAIMessage(autoActivateMic: true),
+            tooltip: 'Speak last message',
+          ),
           IconButton(
             icon: const Icon(Icons.info_outline),
             onPressed: _showScenarioInfo,
@@ -121,7 +180,7 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
             child: _buildConversationArea(),
           ),
 
-          // Input area
+          // Voice-only input area
           if (_isInitialized)
             Consumer<ConversationProvider>(
               builder: (context, conversationProvider, child) {
@@ -129,13 +188,22 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
                 final scenarioProvider = Provider.of<ScenarioProvider>(context, listen: false);
                 final systemPrompt = scenarioProvider.generateSystemPrompt();
 
-                return SpeechInput(
-                  onSendMessage: (message) {
-                    conversationProvider.processUserMessage(message, systemPrompt);
+                return VoiceOnlySpeechInput(
+                  onSendMessage: (message) async {
+                    // Reset the auto-activate flag when the user sends a message
+                    setState(() {
+                      _shouldAutoActivateMic = false;
+                    });
+
+                    // Process the message
+                    await conversationProvider.processUserMessage(message, systemPrompt);
+
+                    // Scroll to show new message
                     _scrollToBottom();
                   },
                   isProcessing: conversationProvider.isProcessingMessage,
                   processingStatus: conversationProvider.processingStatus,
+                  autoActivate: _shouldAutoActivateMic,
                 );
               },
             ),
@@ -160,6 +228,19 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
         if (messages.isEmpty) {
           return const Center(child: Text('No messages yet'));
         }
+
+        // Add a listener to automatically speak new AI messages
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // This will run after the build is complete
+          // We'll check if the last message is from AI and if it's new
+          if (messages.isNotEmpty &&
+              messages.last.role == MessageRole.ai &&
+              messages.last.id != _lastSpokenMessageId) {
+            _lastSpokenMessageId = messages.last.id;
+            // Auto-speak the new AI message with mic activation
+            _speakLastAIMessage(autoActivateMic: true);
+          }
+        });
 
         return ListView.builder(
           controller: _scrollController,
@@ -186,6 +267,9 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
       },
     );
   }
+
+  // Keep track of the last spoken message ID to avoid repeating
+  String? _lastSpokenMessageId;
 
   void _showScenarioInfo() {
     final scenarioProvider = Provider.of<ScenarioProvider>(context, listen: false);
@@ -233,6 +317,30 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
                   );
                 }).toList(),
               ],
+
+              const SizedBox(height: 16),
+
+              // Add voice mode instructions
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'Voice Mode Instructions:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 8),
+                    Text('• Tap the microphone to speak your response'),
+                    Text('• The microphone will activate automatically after AI responses'),
+                    Text('• Tap the speaker icon in the app bar to repeat the last message'),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
