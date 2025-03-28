@@ -9,13 +9,17 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:uuid/uuid.dart';
 import '../utils/logger.dart';
 
-class SpeechService {
+class SpeechService extends ChangeNotifier {
   final stt.SpeechToText _speech = stt.SpeechToText();
   final FlutterTts _flutterTts = FlutterTts();
   bool _isInitialized = false;
   bool _isListening = false;
   String _currentLocaleId = 'en_US';
   final _uuid = Uuid();
+
+  // TTS completion callback
+  final List<Function()> _onTtsCompletionCallbacks = [];
+  bool _isSpeaking = false;
 
   // Constructor initializes the speech services
   SpeechService() {
@@ -69,16 +73,44 @@ class SpeechService {
         }
       }
 
+      // Set start handler
+      _flutterTts.setStartHandler(() {
+        Logger.debug("TTS started");
+        _isSpeaking = true;
+        notifyListeners();
+      });
+
+      // Set TTS completion listener
       _flutterTts.setCompletionHandler(() {
         Logger.debug("TTS completed");
+        _isSpeaking = false;
+
+        // Notify all completion callbacks
+        final callbacks = List<Function()>.from(_onTtsCompletionCallbacks);
+        _onTtsCompletionCallbacks.clear();
+
+        // Execute callbacks after clearing the list to avoid potential issues
+        // if a callback registers another callback
+        for (var callback in callbacks) {
+          callback();
+        }
+
+        notifyListeners();
       });
 
       _flutterTts.setErrorHandler((error) {
         Logger.error("TTS error: $error");
+        _isSpeaking = false;
+        notifyListeners();
       });
     } catch (e) {
       Logger.error("Failed to initialize text-to-speech: $e");
     }
+  }
+
+  // Register a callback for TTS completion
+  void onTtsCompletion(Function() callback) {
+    _onTtsCompletionCallbacks.add(callback);
   }
 
   // Get available speech recognition locales
@@ -104,6 +136,12 @@ class SpeechService {
     required Function(String) onError,
     int listenTimeoutSeconds = 30,
   }) async {
+    // Check if TTS is currently speaking
+    if (_isSpeaking) {
+      onError("Cannot start listening while TTS is speaking");
+      return;
+    }
+
     if (!_isInitialized) {
       _isInitialized = await _speech.initialize(
         onError: (error) => Logger.error("Speech recognition error: $error"),
@@ -181,9 +219,14 @@ class SpeechService {
     }
   }
 
-  // Speak text using TTS
-  Future<void> speak(String text) async {
+  // Speak text using TTS with optional callback
+  Future<void> speak(String text, {Function()? onComplete}) async {
     if (text.isNotEmpty) {
+      // If a completion callback is provided, register it
+      if (onComplete != null) {
+        onTtsCompletion(onComplete);
+      }
+
       await _flutterTts.speak(text);
     }
   }
@@ -191,26 +234,22 @@ class SpeechService {
   // Stop speaking
   Future<void> stopSpeaking() async {
     await _flutterTts.stop();
+    _isSpeaking = false;
+    notifyListeners();
   }
 
-  // Check if TTS is currently speaking
+  // Check if TTS is currently speaking - use our internal state variable
   Future<bool> isSpeaking() async {
-    return await _flutterTts.getEngines.then((_) async {
-      try {
-        // Try to use the speaking property if available
-        final isSpeaking = await _flutterTts.awaitSpeakCompletion(false);
-        return !isSpeaking;
-      } catch (_) {
-        // Fallback - assume not speaking if we can't check
-        Logger.debug("Could not determine TTS speaking state, assuming not speaking");
-        return false;
-      }
-    });
+    return _isSpeaking;
   }
+
+  // Get current TTS speaking state
+  bool get isSpeakingSync => _isSpeaking;
 
   // Dispose of resources
   void dispose() {
     _speech.cancel();
     _flutterTts.stop();
+    super.dispose();
   }
 }

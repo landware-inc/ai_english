@@ -14,6 +14,7 @@ class QAProvider with ChangeNotifier {
   final ClaudeService _claudeService;
   final StorageService storageService;
   final _uuid = Uuid();
+  final Random _random = Random();
 
   // Current QA state
   QASet? _currentQASet;
@@ -28,6 +29,9 @@ class QAProvider with ChangeNotifier {
   // Current question
   int _currentQuestionIndex = 0;
   QuestionAnswer? _currentQuestion;
+
+  // Randomized question order
+  List<int> _questionOrder = [];
 
   // Getters
   QASet? get currentQASet => _currentQASet;
@@ -71,6 +75,10 @@ class QAProvider with ChangeNotifier {
 
           _currentQASet = QASet.fromJson(decodedJson);
           Logger.debug('Loaded QA set from file: ${_currentQASet!.title}, ${_currentQASet!.questions.length} questions');
+
+          // Create a randomized order for questions
+          _randomizeQuestionOrder();
+
         } catch (parseError) {
           Logger.error('JSON parsing error: $parseError');
           throw Exception('Failed to parse QA data: $parseError');
@@ -90,6 +98,19 @@ class QAProvider with ChangeNotifier {
     } finally {
       _setLoading(false);
     }
+  }
+
+  // Randomize the order of questions
+  void _randomizeQuestionOrder() {
+    if (_currentQASet == null) return;
+
+    // Create a list of indices from 0 to questions.length-1
+    _questionOrder = List.generate(_currentQASet!.questions.length, (index) => index);
+
+    // Shuffle the list
+    _questionOrder.shuffle(_random);
+
+    Logger.debug('Randomized question order: $_questionOrder');
   }
 
   // Start a new QA session
@@ -358,7 +379,13 @@ class QAProvider with ChangeNotifier {
         _currentQuestionIndex >= _currentQASet!.questions.length) {
       _currentQuestion = null;
     } else {
-      _currentQuestion = _currentQASet!.questions[_currentQuestionIndex];
+      // Use the randomized order to get the actual question index
+      final actualQuestionIndex = _questionOrder.isNotEmpty ?
+      _questionOrder[_currentQuestionIndex] :
+      _currentQuestionIndex;
+
+      _currentQuestion = _currentQASet!.questions[actualQuestionIndex];
+      Logger.debug('Showing question at randomized index $actualQuestionIndex: ${_currentQuestion!.question}');
     }
     notifyListeners();
   }

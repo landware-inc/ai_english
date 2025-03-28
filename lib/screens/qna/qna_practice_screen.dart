@@ -7,7 +7,7 @@ import '../../providers/qa_provider.dart';
 import '../../providers/conversation_provider.dart';
 import '../../services/speech_service.dart';
 import '../../widgets/loading_indicator.dart';
-import '../../widgets/speech_input.dart';
+import '../../widgets/voice_only_speech_input.dart'; // Import the new widget
 import '../../routes.dart';
 
 class QnAPracticeScreen extends StatefulWidget {
@@ -28,21 +28,17 @@ class _QnAPracticeScreenState extends State<QnAPracticeScreen> {
   bool _isInitialized = false;
   bool _isProcessingAnswer = false;
   bool _isShowingFeedback = false;
+  bool _shouldAutoActivateMic = false;
   String? _error;
   Map<String, dynamic>? _currentFeedback;
 
   @override
   void initState() {
     super.initState();
-
-    // Future.microtask() 사용:
-//    Future.microtask(() => _initializeSession());
-    // 또는 addPostFrameCallback 사용:
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeSession();
     });
   }
-
 
   Future<void> _initializeSession() async {
     try {
@@ -58,8 +54,8 @@ class _QnAPracticeScreenState extends State<QnAPracticeScreen> {
         _isInitialized = true;
       });
 
-      // Speak the current question
-      _speakCurrentQuestion();
+      // Speak the current question and auto-activate microphone after it finishes
+      _speakCurrentQuestion(autoActivateMic: true);
     } catch (e) {
       setState(() {
         _error = 'Failed to initialize session: $e';
@@ -67,13 +63,25 @@ class _QnAPracticeScreenState extends State<QnAPracticeScreen> {
     }
   }
 
-  void _speakCurrentQuestion() {
+  void _speakCurrentQuestion({bool autoActivateMic = false}) {
     final qaProvider = Provider.of<QAProvider>(context, listen: false);
     final speechService = Provider.of<SpeechService>(context, listen: false);
 
     if (qaProvider.currentQuestion != null) {
       debugPrint('Speaking question: ${qaProvider.currentQuestion?.question}');
-      speechService.speak(qaProvider.currentQuestion!.question);
+
+      setState(() {
+        _shouldAutoActivateMic = autoActivateMic;
+      });
+
+      // Use the onComplete callback to auto-activate microphone
+      speechService.speak(qaProvider.currentQuestion!.question, onComplete: () {
+        if (autoActivateMic && mounted) {
+          setState(() {
+            _shouldAutoActivateMic = true;
+          });
+        }
+      });
     } else {
       debugPrint('No question to speak');
     }
@@ -113,6 +121,10 @@ class _QnAPracticeScreenState extends State<QnAPracticeScreen> {
         }
 
         conversationProvider.addAIMessage(aiMessage);
+
+        // Speak the feedback
+        final speechService = Provider.of<SpeechService>(context, listen: false);
+        speechService.speak(aiMessage);
       } else {
         setState(() {
           _error = result['error'];
@@ -131,6 +143,10 @@ class _QnAPracticeScreenState extends State<QnAPracticeScreen> {
 
   void _moveToNextQuestion() {
     final qaProvider = Provider.of<QAProvider>(context, listen: false);
+    final speechService = Provider.of<SpeechService>(context, listen: false);
+
+    // Stop any ongoing speech
+    speechService.stopSpeaking();
 
     if (qaProvider.hasMoreQuestions) {
       final success = qaProvider.moveToNextQuestion();
@@ -141,8 +157,8 @@ class _QnAPracticeScreenState extends State<QnAPracticeScreen> {
           _currentFeedback = null;
         });
 
-        // Speak the new question
-        _speakCurrentQuestion();
+        // Speak the new question and auto-activate microphone after
+        _speakCurrentQuestion(autoActivateMic: true);
       }
     } else {
       // End of questions, complete the session
@@ -262,14 +278,15 @@ class _QnAPracticeScreenState extends State<QnAPracticeScreen> {
           child: _buildQuestionArea(),
         ),
 
-        // Answer input area
+        // Voice input area (using our new widget)
         if (!_isShowingFeedback)
           Consumer<QAProvider>(
             builder: (context, qaProvider, child) {
-              return SpeechInput(
+              return VoiceOnlySpeechInput(
                 onSendMessage: _processAnswer,
                 isProcessing: _isProcessingAnswer,
                 processingStatus: 'Evaluating your answer...',
+                autoActivate: _shouldAutoActivateMic,
               );
             },
           ),
@@ -433,36 +450,41 @@ class _QnAPracticeScreenState extends State<QnAPracticeScreen> {
 
               const SizedBox(height: 24),
 
-              // Instructions
-              if (!_isShowingFeedback)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Instructions:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Answer the question above. You can type your answer or use the microphone button to speak.',
-                      ),
-                      const SizedBox(height: 8),
-                      if (question.keywords.isNotEmpty)
-                        Text(
-                          'Your answer should include concepts like: ${question.keywords.join(', ')}',
-                          style: const TextStyle(fontStyle: FontStyle.italic),
-                        ),
-                    ],
-                  ),
+              // Instructions - simpler now with voice-only mode
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.mic, color: Colors.blue.shade700),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Voice Mode Active',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Tap the microphone button to speak your answer. The microphone will activate automatically after each question.',
+                    ),
+                    const SizedBox(height: 8),
+                    if (question.keywords.isNotEmpty)
+                      Text(
+                        'Your answer should include concepts like: ${question.keywords.join(', ')}',
+                        style: const TextStyle(fontStyle: FontStyle.italic),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -560,23 +582,23 @@ class _QnAPracticeScreenState extends State<QnAPracticeScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('How to Practice'),
+        title: const Text('Voice Mode Instructions'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: const [
-            Text('1. Read the question carefully'),
+            Text('1. Listen to the question being read'),
             SizedBox(height: 8),
-            Text('2. Type your answer or use the microphone to speak it'),
+            Text('2. The microphone will automatically activate when the question finishes'),
             SizedBox(height: 8),
-            Text('3. Submit your answer for evaluation'),
+            Text('3. Speak your answer clearly'),
             SizedBox(height: 8),
-            Text('4. Review the feedback and correct answers'),
+            Text('4. Tap the microphone again if you need to stop or restart'),
             SizedBox(height: 8),
-            Text('5. Continue to the next question'),
+            Text('5. Listen to the feedback and tap "Next Question" to continue'),
             SizedBox(height: 16),
             Text(
-              'Note: Long-press the microphone button to start recording. Release when finished.',
+              'The microphone icon will turn red when it\'s listening to your answer.',
               style: TextStyle(fontStyle: FontStyle.italic),
             ),
           ],
