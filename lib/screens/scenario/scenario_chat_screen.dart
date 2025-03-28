@@ -3,11 +3,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/conversation_model.dart';
+import '../../models/scenario_model.dart';
 import '../../providers/conversation_provider.dart';
 import '../../providers/scenario_provider.dart';
 import '../../services/speech_service.dart';
 import '../../widgets/conversation_bubble.dart';
-import '../../widgets/voice_only_speech_input.dart'; // Updated import
+import '../../widgets/voice_only_speech_input.dart';
 import '../../widgets/loading_indicator.dart';
 
 class ScenarioChatScreen extends StatefulWidget {
@@ -29,6 +30,12 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
   bool _isInitialized = false;
   bool _shouldAutoActivateMic = false;
   String? _error;
+
+  // Keep track of the last spoken message ID to avoid repeating
+  String? _lastSpokenMessageId;
+
+  // Flag to track if we've completed initial conversation loading
+  bool _conversationInitiallyLoaded = false;
 
   @override
   void initState() {
@@ -52,20 +59,24 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
       final conversationProvider = Provider.of<ConversationProvider>(context, listen: false);
       await conversationProvider.loadConversation(widget.conversationId);
 
-      // Add initial AI message if conversation is empty
-      if (conversationProvider.currentConversation?.messages.isEmpty ?? true) {
-        await _sendInitialMessage();
-      }
-
       setState(() {
         _isInitialized = true;
       });
 
-      // Add a short delay to ensure the UI is updated before speaking
-      Future.delayed(const Duration(milliseconds: 500), () {
-        // Auto-speak the last AI message to help the user understand context
-        _speakLastAIMessage(autoActivateMic: true);
-      });
+      // Always initiate conversation with AI message first, either
+      // by using existing one or creating a new one
+      if (conversationProvider.currentConversation?.messages.isEmpty ?? true) {
+        // New conversation - send initial message
+        debugPrint("Starting new scenario conversation");
+        await _sendInitialMessage();
+      } else {
+        // Existing conversation - just speak last AI message
+        debugPrint("Resuming existing scenario conversation");
+        // Add a short delay to ensure the UI is updated before speaking
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _speakLastAIMessage(autoActivateMic: true);
+        });
+      }
     } catch (e) {
       setState(() {
         _error = 'Failed to initialize conversation: $e';
@@ -76,15 +87,39 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
   Future<void> _sendInitialMessage() async {
     final scenarioProvider = Provider.of<ScenarioProvider>(context, listen: false);
     final conversationProvider = Provider.of<ConversationProvider>(context, listen: false);
+    final session = scenarioProvider.currentSession;
+
+    if (session == null) {
+      debugPrint("Error: No active scenario session found");
+      return;
+    }
 
     // Generate system prompt
     final systemPrompt = scenarioProvider.generateSystemPrompt();
 
-    // Process the empty message to get the AI's opening line
-    await conversationProvider.processUserMessage('', systemPrompt);
+    // Create a starting message based on the scenario context
+    final startingMessage = _generateStartingPrompt(session);
+    debugPrint("Starting scenario with prompt: $startingMessage");
+
+    // Process the starting message to get the AI's opening line
+    await conversationProvider.processUserMessage(startingMessage, systemPrompt);
 
     // Let UI update before we return
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Speak the AI's opening message
+    _speakLastAIMessage(autoActivateMic: true);
+  }
+
+  // Generate a starting prompt to help Claude understand how to begin the conversation
+  String _generateStartingPrompt(ScenarioSession session) {
+    final role = session.selectedRole;
+    final scenario = session.scenario.name;
+    final keywords = session.selectedKeywords.join(", ");
+
+    return "Please start the scenario conversation as if you're talking to a '$role' in a '$scenario' scenario. "
+        "Focus on these keywords: $keywords. Begin the conversation naturally as if we just met in this situation. "
+        "Keep your first message brief and conversational. This message won't be shown to the user.";
   }
 
   void _speakLastAIMessage({bool autoActivateMic = false}) {
@@ -237,8 +272,17 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
               messages.last.role == MessageRole.ai &&
               messages.last.id != _lastSpokenMessageId) {
             _lastSpokenMessageId = messages.last.id;
-            // Auto-speak the new AI message with mic activation
-            _speakLastAIMessage(autoActivateMic: true);
+
+            // Don't auto-speak initial messages when first loading an existing conversation
+            // (to avoid unexpected speech when navigating to the screen)
+            // But do speak new messages that arrive during the conversation
+            if (_conversationInitiallyLoaded) {
+              // Auto-speak the new AI message with mic activation
+              _speakLastAIMessage(autoActivateMic: true);
+            } else {
+              // Mark that we've now loaded the conversation initially
+              _conversationInitiallyLoaded = true;
+            }
           }
         });
 
@@ -267,9 +311,6 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
       },
     );
   }
-
-  // Keep track of the last spoken message ID to avoid repeating
-  String? _lastSpokenMessageId;
 
   void _showScenarioInfo() {
     final scenarioProvider = Provider.of<ScenarioProvider>(context, listen: false);
@@ -335,6 +376,7 @@ class _ScenarioChatScreenState extends State<ScenarioChatScreen> {
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     SizedBox(height: 8),
+                    Text('• The AI will begin the conversation for your scenario'),
                     Text('• Tap the microphone to speak your response'),
                     Text('• The microphone will activate automatically after AI responses'),
                     Text('• Tap the speaker icon in the app bar to repeat the last message'),
