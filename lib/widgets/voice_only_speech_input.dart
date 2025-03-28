@@ -28,6 +28,9 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
   String _listeningStatus = '';
   bool _micActivationPending = false;
 
+  // Timer to prevent TTS self-activation problems
+  bool _safeToActivate = false;
+
   @override
   void initState() {
     super.initState();
@@ -38,9 +41,11 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
         _micActivationPending = true;
       });
 
-      // Check on next frame if TTS is speaking
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _checkAndActivateMicrophone();
+      // Add a slight delay before checking TTS status
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _checkAndActivateMicrophone();
+        }
       });
     }
   }
@@ -50,18 +55,45 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
     if (!mounted) return;
 
     final speechService = Provider.of<SpeechService>(context, listen: false);
-    final isSpeaking = await speechService.isSpeaking();
+    final isSpeaking = speechService.isSpeakingSync;
 
     if (!isSpeaking && _micActivationPending && mounted) {
+      // Set a flag that it's safe to activate microphone and wait a moment
       setState(() {
+        _safeToActivate = true;
         _micActivationPending = false;
       });
-      _activateMicrophone(speechService);
+
+      // Add a slight delay before activating to ensure TTS is really done
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted && _safeToActivate) {
+          // Double-check TTS is not speaking before activating
+          if (!speechService.isSpeakingSync) {
+            _activateMicrophone(speechService);
+          } else {
+            // TTS started speaking again, cancel activation
+            setState(() {
+              _safeToActivate = false;
+              _micActivationPending = true;
+            });
+            _checkAndActivateMicrophone(); // Try again
+          }
+        }
+      });
     } else if (isSpeaking && _micActivationPending && mounted) {
-      // If TTS is speaking, wait for it to finish and then check again
+      // If TTS is speaking, wait for it to finish and register for completion callback
+      setState(() {
+        _safeToActivate = false;
+      });
+
       speechService.onTtsCompletion(() {
         if (mounted) {
-          _checkAndActivateMicrophone();
+          // Add a brief delay before attempting to activate microphone
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              _checkAndActivateMicrophone();
+            }
+          });
         }
       });
     }
@@ -69,124 +101,121 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
 
   @override
   Widget build(BuildContext context) {
-    final speechService = Provider.of<SpeechService>(context);
-    final isTtsSpeaking = speechService.isSpeakingSync;
+    return Consumer<SpeechService>(
+      builder: (context, speechService, child) {
+        final isTtsSpeaking = speechService.isSpeakingSync;
+        final bool micDisabled = widget.isProcessing || isTtsSpeaking;
 
-    return Column(
-      children: [
-        // Recognized text display - always show this container but with empty or filled content
-        Container(
-          padding: const EdgeInsets.all(16),
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.grey.shade50,
-            border: Border(
-              top: BorderSide(color: Colors.grey.shade300, width: 1),
-              bottom: BorderSide(color: Colors.grey.shade300, width: 1),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Your answer:',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade700,
-                  fontSize: 14,
+        return Column(
+          children: [
+            // Recognized text display - always show this container but with empty or filled content
+            Container(
+              padding: const EdgeInsets.all(16),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                border: Border(
+                  top: BorderSide(color: Colors.grey.shade300, width: 1),
+                  bottom: BorderSide(color: Colors.grey.shade300, width: 1),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                _recognizedText.isEmpty
-                    ? isTtsSpeaking
-                    ? 'Waiting for question to finish...'
-                    : 'Tap microphone to speak...'
-                    : _recognizedText,
-                style: TextStyle(
-                  color: _recognizedText.isEmpty ? Colors.grey.shade500 : Colors.black87,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Processing or listening status indicator
-        if (widget.isProcessing || _isListening || isTtsSpeaking)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            color: widget.isProcessing
-                ? Colors.blue.shade50
-                : _isListening
-                ? Colors.green.shade50
-                : Colors.yellow.shade50,
-            width: double.infinity,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      widget.isProcessing
-                          ? Colors.blue
-                          : _isListening
-                          ? Colors.green
-                          : Colors.orange,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Your answer:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade700,
+                      fontSize: 14,
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  widget.isProcessing
-                      ? widget.processingStatus
-                      : _isListening
-                      ? 'Listening...'
-                      : isTtsSpeaking
-                      ? 'Reading question...'
-                      : 'Tap microphone to speak',
-                  style: TextStyle(
-                    color: widget.isProcessing
-                        ? Colors.blue.shade700
-                        : _isListening
-                        ? Colors.green.shade700
-                        : Colors.orange.shade700,
+                  const SizedBox(height: 8),
+                  Text(
+                    _recognizedText.isEmpty
+                        ? isTtsSpeaking
+                        ? 'Waiting for question to finish...'
+                        : 'Tap microphone to speak...'
+                        : _recognizedText,
+                    style: TextStyle(
+                      color: _recognizedText.isEmpty ? Colors.grey.shade500 : Colors.black87,
+                      fontSize: 16,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-
-        // Microphone button and submit
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                offset: const Offset(0, -2),
-                blurRadius: 4,
-                color: Colors.black.withOpacity(0.1),
+                ],
               ),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 16,
-          ),
-          child: SafeArea(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Microphone button
-                Consumer<SpeechService>(
-                  builder: (context, speechService, child) {
-                    final bool isTtsSpeaking = speechService.isSpeakingSync;
-                    final bool micDisabled = widget.isProcessing || isTtsSpeaking;
+            ),
 
-                    return GestureDetector(
+            // Processing or listening status indicator
+            if (widget.isProcessing || _isListening || isTtsSpeaking)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                color: widget.isProcessing
+                    ? Colors.blue.shade50
+                    : _isListening
+                    ? Colors.green.shade50
+                    : Colors.yellow.shade50,
+                width: double.infinity,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          widget.isProcessing
+                              ? Colors.blue
+                              : _isListening
+                              ? Colors.green
+                              : Colors.orange,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.isProcessing
+                          ? widget.processingStatus
+                          : _isListening
+                          ? 'Listening...'
+                          : isTtsSpeaking
+                          ? 'Reading question...'
+                          : 'Tap microphone to speak',
+                      style: TextStyle(
+                        color: widget.isProcessing
+                            ? Colors.blue.shade700
+                            : _isListening
+                            ? Colors.green.shade700
+                            : Colors.orange.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Microphone button and submit
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    offset: const Offset(0, -2),
+                    blurRadius: 4,
+                    color: Colors.black.withOpacity(0.1),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              child: SafeArea(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Microphone button
+                    GestureDetector(
                       onTap: micDisabled
                           ? null
                           : () => _toggleListening(speechService),
@@ -236,19 +265,11 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
                           ],
                         ),
                       ),
-                    );
-                  },
-                ),
+                    ),
 
-                // Submit button - only show when we have recognized text and not listening/processing/TTS speaking
-                if (_recognizedText.isNotEmpty && !_isListening && !widget.isProcessing)
-                  Consumer<SpeechService>(
-                    builder: (context, speechService, child) {
-                      final bool isTtsSpeaking = speechService.isSpeakingSync;
-
-                      if (isTtsSpeaking) return const SizedBox.shrink();
-
-                      return Padding(
+                    // Submit button - only show when we have recognized text and not listening/processing/TTS speaking
+                    if (_recognizedText.isNotEmpty && !_isListening && !widget.isProcessing && !isTtsSpeaking)
+                      Padding(
                         padding: const EdgeInsets.only(left: 24),
                         child: ElevatedButton(
                           onPressed: _sendRecognizedText,
@@ -271,14 +292,14 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
                             ],
                           ),
                         ),
-                      );
-                    },
-                  ),
-              ],
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -294,11 +315,8 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
 
   // New method to check TTS status before activating microphone
   Future<void> _activateMicrophoneIfNotSpeaking(SpeechService speechService) async {
-    final isSpeaking = await speechService.isSpeaking();
-
-    if (!isSpeaking) {
-      _activateMicrophone(speechService);
-    } else {
+    // First check our synchronous state to fail fast
+    if (speechService.isSpeakingSync) {
       // Show a message that we can't start listening while TTS is speaking
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -306,13 +324,40 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
           duration: Duration(seconds: 2),
         ),
       );
+      return;
     }
+
+    // Double-check with a slight delay to avoid race conditions
+    Future.delayed(const Duration(milliseconds: 300), () async {
+      if (!mounted) return;
+
+      // Check again if TTS is still not speaking
+      if (!speechService.isSpeakingSync) {
+        setState(() {
+          _safeToActivate = true;
+        });
+        _activateMicrophone(speechService);
+      } else {
+        // TTS started speaking since our initial check
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please wait for the question to finish...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    });
   }
 
   void _activateMicrophone(SpeechService speechService) {
-    if (widget.isProcessing) return;
+    // Final safety check - do not activate if TTS is speaking
+    if (speechService.isSpeakingSync || widget.isProcessing) {
+      setState(() {
+        _safeToActivate = false;
+      });
+      return;
+    }
 
-    // Clear previous recognized text if we're starting fresh
     setState(() {
       _isListening = true;
       _listeningStatus = 'Listening...';
@@ -340,6 +385,7 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
         setState(() {
           _isListening = false;
           _listeningStatus = '';
+          _safeToActivate = false;
         });
 
         // Show error as snackbar
@@ -359,6 +405,10 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
   void _stopListening(SpeechService speechService) {
     if (_isListening) {
       speechService.stopListening();
+      setState(() {
+        _isListening = false;
+        _listeningStatus = '';
+      });
     }
   }
 
@@ -368,6 +418,7 @@ class _VoiceOnlySpeechInputState extends State<VoiceOnlySpeechInput> {
 
       setState(() {
         _recognizedText = '';
+        _safeToActivate = false;
       });
     }
   }
